@@ -56,6 +56,7 @@ STRINGS = {
         "no_archives": "No archived data found yet.",
         "connection_ok": "✅ SQL Warehouse connected! Today's date = {date}",
         "connection_fail": "❌ SQL Warehouse test failed.",
+        "wrong_password": "❌ Incorrect password. Please try again.",
         "disclaimer": """
 ---
 ⚠️ **Disclaimer:**  
@@ -88,6 +89,7 @@ For official ZATCA compliance, always use certified solutions.
         "no_archives": "لا توجد بيانات مؤرشفة حتى الآن.",
         "connection_ok": "✅ تم الاتصال بـ SQL Warehouse! تاريخ اليوم = {date}",
         "connection_fail": "❌ فشل اختبار الاتصال بـ SQL Warehouse.",
+        "wrong_password": "❌ كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.",
         "disclaimer": """
 ---
 ⚠️ **تنويه:**  
@@ -177,15 +179,18 @@ tab1, tab2, tab3 = st.tabs([T["main_tab"], T["inv_tab"], T["fail_tab"]])
 with tab1:
     if st.session_state.role not in ["main", "finance"]:
         pw = st.text_input(T["password_prompt"], type="password", key="main_pw")
-        if pw == MAIN_PASSWORD:
-            st.session_state.role = "main"
-            st.success("Access granted ✅")
-        elif pw == FINANCE_PASSWORD:
-            st.session_state.role = "finance"
-            st.success("Finance access granted ✅")
+        if pw:
+            if pw == MAIN_PASSWORD:
+                st.session_state.role = "main"
+                st.success("Access granted ✅")
+            elif pw == FINANCE_PASSWORD:
+                st.session_state.role = "finance"
+                st.success("Finance access granted ✅")
+            else:
+                st.error(T["wrong_password"])
+                st.stop()
         else:
             st.stop()
-
     batch_name_input = st.text_input(T["batch_name"], placeholder="e.g. Sept14_Invoices")
     if batch_name_input and batch_name_input.strip():
         BATCH_NAME = batch_name_input.strip().replace(" ", "_")
