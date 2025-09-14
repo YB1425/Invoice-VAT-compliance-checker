@@ -20,7 +20,29 @@ ARCHIVE_PATH = st.secrets["ARCHIVE_PATH"]
 JOB_ID = st.secrets["JOB_ID"]
 WAREHOUSE_ID = st.secrets["WAREHOUSE_ID"]
 
+# Passwords
+MAIN_PASSWORD = st.secrets["MAIN_PASSWORD"]
+FINANCE_PASSWORD = st.secrets["FINANCE_PASSWORD"]
+
 headers = {"Authorization": f"Bearer {TOKEN}"}
+
+# ==== SESSION STATE ====
+if "role" not in st.session_state:
+    st.session_state.role = None  # can be "main" or "finance"
+
+# ==== AUTH HELPERS ====
+def check_password(pw: str):
+    if pw == FINANCE_PASSWORD:
+        st.session_state.role = "finance"
+        return True
+    elif pw == MAIN_PASSWORD:
+        st.session_state.role = "main"
+        return True
+    return False
+
+def logout():
+    st.session_state.role = None
+    st.experimental_rerun()
 
 # ==== HELPERS ====
 def upload_to_volume(file_name, file_bytes, dest_path):
@@ -48,7 +70,6 @@ def run_sql(sql: str):
     resp = requests.post(submit_url, headers=headers, json=payload).json()
 
     if "statement_id" not in resp:
-        st.error(f"SQL submission failed: {resp}")
         return pd.DataFrame()
 
     statement_id = resp["statement_id"]
@@ -60,10 +81,8 @@ def run_sql(sql: str):
         time.sleep(2)
 
     if res["status"]["state"] != "SUCCEEDED":
-        st.error("SQL execution failed: " + str(res))
         return pd.DataFrame()
 
-    # If result key missing, return empty dataframe
     if "result" not in res or "data_array" not in res["result"]:
         return pd.DataFrame()
 
@@ -89,8 +108,7 @@ def df_to_excel(df_dict):
 
 # ==== CONNECTION TEST ====
 st.subheader("🔌 Databricks Connection Check")
-test_sql = "SELECT current_date() AS today"
-df_test = run_sql(test_sql)
+df_test = run_sql("SELECT current_date() AS today")
 if not df_test.empty and "today" in df_test.columns:
     st.success(f"✅ SQL Warehouse connected! Today's date = {df_test.at[0, 'today']}")
 else:
@@ -99,7 +117,19 @@ else:
 # ==== TABS ====
 tab1, tab2, tab3 = st.tabs(["📥 New Compliance Check", "📂 Archived Invoices", "📂 Archived Failed Checks"])
 
+# --- Main Tab ---
 with tab1:
+    if st.session_state.role not in ["main", "finance"]:
+        pw = st.text_input("🔑 Enter password to access this section", type="password", key="main_pw")
+        if pw and check_password(pw):
+            st.success("Access granted ✅")
+        else:
+            st.warning("Please enter the correct password.")
+            st.stop()
+    else:
+        if st.button("🚪 Logout"):
+            logout()
+
     batch_name_input = st.text_input("📦 Enter a batch name (optional)", placeholder="e.g. Sept14_Invoices")
     if batch_name_input and batch_name_input.strip():
         BATCH_NAME = batch_name_input.strip().replace(" ", "_")
@@ -141,26 +171,24 @@ with tab1:
                     st.success("✅ Job completed! Fetching results...")
 
                     # --- Summary ---
-                    summary_sql = """
-                    SELECT path, invoice_number, issue_date, final_decision
-                    FROM dev_uc_catalog.default.zatca_invoices_head
-                    ORDER BY path;
-                    """
-                    df_summary = run_sql(summary_sql)
+                    df_summary = run_sql("""
+                        SELECT path, invoice_number, issue_date, final_decision
+                        FROM dev_uc_catalog.default.zatca_invoices_head
+                        ORDER BY path
+                    """)
                     st.subheader("📄 Invoice Summary")
                     st.dataframe(df_summary)
 
-                    # --- Detailed failures ---
-                    details_sql = """
-                    SELECT h.path, h.invoice_number, h.issue_date, h.final_decision,
-                           c.id AS failed_rule_id, c.name AS failed_rule_name, c.reason AS failed_reason
-                    FROM dev_uc_catalog.default.zatca_invoices_head h
-                    JOIN dev_uc_catalog.default.zatca_checks_flat c
-                      ON h.path = c.path
-                    WHERE c.result = 'fail'
-                    ORDER BY h.path, c.id;
-                    """
-                    df_details = run_sql(details_sql)
+                    # --- Failed checks ---
+                    df_details = run_sql("""
+                        SELECT h.path, h.invoice_number, h.issue_date, h.final_decision,
+                               c.id AS failed_rule_id, c.name AS failed_rule_name, c.reason AS failed_reason
+                        FROM dev_uc_catalog.default.zatca_invoices_head h
+                        JOIN dev_uc_catalog.default.zatca_checks_flat c
+                          ON h.path = c.path
+                        WHERE c.result = 'fail'
+                        ORDER BY h.path, c.id
+                    """)
                     if not df_details.empty:
                         st.subheader("⚠️ Failed Checks")
                         st.dataframe(df_details)
@@ -175,27 +203,33 @@ with tab1:
                                        file_name=f"vat_compliance_results_{BATCH_NAME}.xlsx")
 
                     # --- Archive results in SQL ---
-                    with st.spinner("Archiving SQL results..."):
-                        run_sql(f"""
-                            INSERT INTO dev_uc_catalog.default.zatca_invoices_head_archive
-                            SELECT *, '{BATCH_NAME}' AS batch_name
-                            FROM dev_uc_catalog.default.zatca_invoices_head
-                        """)
-                        run_sql(f"""
-                            INSERT INTO dev_uc_catalog.default.zatca_checks_flat_archive
-                            SELECT *, '{BATCH_NAME}' AS batch_name
-                            FROM dev_uc_catalog.default.zatca_checks_flat
-                        """)
+                    run_sql(f"""
+                        INSERT INTO dev_uc_catalog.default.zatca_invoices_head_archive
+                        SELECT *, '{BATCH_NAME}' AS batch_name
+                        FROM dev_uc_catalog.default.zatca_invoices_head
+                    """)
+                    run_sql(f"""
+                        INSERT INTO dev_uc_catalog.default.zatca_checks_flat_archive
+                        SELECT *, '{BATCH_NAME}' AS batch_name
+                        FROM dev_uc_catalog.default.zatca_checks_flat
+                    """)
 
                     # --- Cleanup working tables ---
-                    with st.spinner("Cleaning up..."):
-                        run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoices_head")
-                        run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_checks_flat")
-                        run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoice_check_parsed")
+                    run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoices_head")
+                    run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_checks_flat")
+                    run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoice_check_parsed")
 
                     st.success("Session archived and reset ✅")
 
+# --- Archived Invoices (Finance only) ---
 with tab2:
+    if st.session_state.role != "finance":
+        st.warning("Finance-only access. Please enter the finance password in Tab 1.")
+        st.stop()
+    else:
+        if st.button("🚪 Logout", key="logout_fin1"):
+            logout()
+
     st.subheader("📂 Archived Invoices")
     batch_list = run_sql("SELECT DISTINCT batch_name FROM dev_uc_catalog.default.zatca_invoices_head_archive ORDER BY batch_name DESC")
     if not batch_list.empty:
@@ -213,11 +247,19 @@ with tab2:
     else:
         st.info("No archived invoices found yet.")
 
+# --- Archived Failed Checks (Finance only) ---
 with tab3:
+    if st.session_state.role != "finance":
+        st.warning("Finance-only access. Please enter the finance password in Tab 1.")
+        st.stop()
+    else:
+        if st.button("🚪 Logout", key="logout_fin2"):
+            logout()
+
     st.subheader("📂 Archived Failed Checks")
     batch_list = run_sql("SELECT DISTINCT batch_name FROM dev_uc_catalog.default.zatca_checks_flat_archive ORDER BY batch_name DESC")
     if not batch_list.empty:
-        selected_batch = st.selectbox("Choose a batch", batch_list["batch_name"])
+        selected_batch = st.selectbox("Choose a batch", batch_list["batch_name"], key="batch_checks")
         df_archive_checks = run_sql(f"""
             SELECT * FROM dev_uc_catalog.default.zatca_checks_flat_archive
             WHERE batch_name = '{selected_batch}'
