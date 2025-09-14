@@ -287,21 +287,28 @@ with tab1:
                     msg = cleanup_volume(VOLUME_PATH, BATCH_NAME)
                     st.success(f"Session archived and reset ✅ ({msg})")
 
-# --- Archived Invoices (Finance only) ---
+# ==== Archived Invoices (Finance only) ====
 with tab2:
     if st.session_state.role != "finance":
         st.warning(T["finance_prompt"])
         st.stop()
 
     st.subheader(T["inv_tab"])
-    # Don't query yet — wait for a click
-    if st.button("🔄 Load archived invoices", key="load_inv"):
-        with st.spinner("Loading archived invoice batches..."):
-            batch_list = run_sql("""
-                SELECT DISTINCT batch_name
-                FROM dev_uc_catalog.default.zatca_invoices_head_archive
-                ORDER BY batch_name DESC
-            """)
+
+    # Keep batch list in session
+    if "inv_batches" not in st.session_state:
+        st.session_state.inv_batches = None
+
+    if st.button("🔄 Load archived invoices", key="load_inv") or st.session_state.inv_batches is not None:
+        if st.session_state.inv_batches is None:
+            with st.spinner("Loading archived invoice batches..."):
+                st.session_state.inv_batches = run_sql("""
+                    SELECT DISTINCT batch_name
+                    FROM dev_uc_catalog.default.zatca_invoices_head_archive
+                    ORDER BY batch_name DESC
+                """)
+
+        batch_list = st.session_state.inv_batches
         if not batch_list.empty:
             selected_batch = st.selectbox(
                 "Choose a batch",
@@ -328,20 +335,28 @@ with tab2:
     else:
         st.caption("Click the button above to load archives.")
 
-# --- Archived Failed Checks (Finance only) ---
+# ==== Archived Failed Checks (Finance only) ====
 with tab3:
     if st.session_state.role != "finance":
         st.warning(T["finance_prompt"])
         st.stop()
 
     st.subheader(T["fail_tab"])
-    if st.button("🔄 Load archived failed checks", key="load_checks"):
-        with st.spinner("Loading archived check batches..."):
-            batch_list = run_sql("""
-                SELECT DISTINCT batch_name
-                FROM dev_uc_catalog.default.zatca_checks_flat_archive
-                ORDER BY batch_name DESC
-            """)
+
+    # Keep batch list in session
+    if "check_batches" not in st.session_state:
+        st.session_state.check_batches = None
+
+    if st.button("🔄 Load archived failed checks", key="load_checks") or st.session_state.check_batches is not None:
+        if st.session_state.check_batches is None:
+            with st.spinner("Loading archived check batches..."):
+                st.session_state.check_batches = run_sql("""
+                    SELECT DISTINCT batch_name
+                    FROM dev_uc_catalog.default.zatca_checks_flat_archive
+                    ORDER BY batch_name DESC
+                """)
+
+        batch_list = st.session_state.check_batches
         if not batch_list.empty:
             selected_batch = st.selectbox(
                 "Choose a batch",
