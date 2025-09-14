@@ -294,21 +294,39 @@ with tab2:
         st.stop()
 
     st.subheader(T["inv_tab"])
-    batch_list = run_sql("SELECT DISTINCT batch_name FROM dev_uc_catalog.default.zatca_invoices_head_archive ORDER BY batch_name DESC")
-    if not batch_list.empty:
-        selected_batch = st.selectbox("Choose a batch", batch_list["batch_name"], key="batch_invoices")
-        df_archive_invoices = run_sql(f"""
-            SELECT * FROM dev_uc_catalog.default.zatca_invoices_head_archive
-            WHERE batch_name = '{selected_batch}'
-            ORDER BY path
-        """)
-        st.dataframe(df_archive_invoices)
-        st.download_button(T["download_inv_csv"],
-                           data=df_archive_invoices.to_csv(index=False).encode("utf-8"),
-                           file_name=f"invoices_{selected_batch}.csv",
-                           mime="text/csv")
+    # Don't query yet — wait for a click
+    if st.button("🔄 Load archived invoices", key="load_inv"):
+        with st.spinner("Loading archived invoice batches..."):
+            batch_list = run_sql("""
+                SELECT DISTINCT batch_name
+                FROM dev_uc_catalog.default.zatca_invoices_head_archive
+                ORDER BY batch_name DESC
+            """)
+        if not batch_list.empty:
+            selected_batch = st.selectbox(
+                "Choose a batch",
+                batch_list["batch_name"],
+                key="batch_invoices"
+            )
+            with st.spinner("Fetching archived invoices..."):
+                df_archive_invoices = run_sql(f"""
+                    SELECT *
+                    FROM dev_uc_catalog.default.zatca_invoices_head_archive
+                    WHERE batch_name = '{selected_batch}'
+                    ORDER BY path
+                """)
+            st.dataframe(df_archive_invoices)
+            st.download_button(
+                T["download_inv_csv"],
+                data=df_archive_invoices.to_csv(index=False).encode("utf-8"),
+                file_name=f"invoices_{selected_batch}.csv",
+                mime="text/csv",
+                key="dl_inv_csv"
+            )
+        else:
+            st.info(T["no_archives"])
     else:
-        st.info(T["no_archives"])
+        st.caption("Click the button above to load archives.")
 
 # --- Archived Failed Checks (Finance only) ---
 with tab3:
@@ -317,21 +335,38 @@ with tab3:
         st.stop()
 
     st.subheader(T["fail_tab"])
-    batch_list = run_sql("SELECT DISTINCT batch_name FROM dev_uc_catalog.default.zatca_checks_flat_archive ORDER BY batch_name DESC")
-    if not batch_list.empty:
-        selected_batch = st.selectbox("Choose a batch", batch_list["batch_name"], key="batch_checks")
-        df_archive_checks = run_sql(f"""
-            SELECT * FROM dev_uc_catalog.default.zatca_checks_flat_archive
-            WHERE batch_name = '{selected_batch}'
-            ORDER BY path, id
-        """)
-        st.dataframe(df_archive_checks)
-        st.download_button(T["download_fail_csv"],
-                           data=df_archive_checks.to_csv(index=False).encode("utf-8"),
-                           file_name=f"checks_{selected_batch}.csv",
-                           mime="text/csv")
+    if st.button("🔄 Load archived failed checks", key="load_checks"):
+        with st.spinner("Loading archived check batches..."):
+            batch_list = run_sql("""
+                SELECT DISTINCT batch_name
+                FROM dev_uc_catalog.default.zatca_checks_flat_archive
+                ORDER BY batch_name DESC
+            """)
+        if not batch_list.empty:
+            selected_batch = st.selectbox(
+                "Choose a batch",
+                batch_list["batch_name"],
+                key="batch_checks"
+            )
+            with st.spinner("Fetching archived failed checks..."):
+                df_archive_checks = run_sql(f"""
+                    SELECT *
+                    FROM dev_uc_catalog.default.zatca_checks_flat_archive
+                    WHERE batch_name = '{selected_batch}'
+                    ORDER BY path, id
+                """)
+            st.dataframe(df_archive_checks)
+            st.download_button(
+                T["download_fail_csv"],
+                data=df_archive_checks.to_csv(index=False).encode("utf-8"),
+                file_name=f"checks_{selected_batch}.csv",
+                mime="text/csv",
+                key="dl_checks_csv"
+            )
+        else:
+            st.info(T["no_archives"])
     else:
-        st.info(T["no_archives"])
+        st.caption("Click the button above to load archives.")
 
 # ==== DISCLAIMER ====
 st.markdown(T["disclaimer"])
