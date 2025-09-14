@@ -171,11 +171,14 @@ def df_to_excel(df_dict):
         for sheet, df in df_dict.items():
             df.to_excel(writer, sheet_name=sheet, index=False)
     return output.getvalue()
-    
-def cleanup_volume(path):
-    url = f"{INSTANCE}/api/2.0/fs/files{path}?recursive=true"
+
+def cleanup_volume(path, batch_name):
+    # Delete the whole batch folder in one request
+    folder_path = f"{path}/{batch_name}"
+    url = f"{INSTANCE}/api/2.0/fs/files{folder_path}?recursive=true"
     resp = requests.delete(url, headers=headers)
     resp.raise_for_status()
+    return f"Deleted folder {folder_path}"
 # ==== TABS ====
 tab1, tab2, tab3 = st.tabs([T["main_tab"], T["inv_tab"], T["fail_tab"]])
 
@@ -224,7 +227,7 @@ with tab1:
                     with st.spinner("Uploading files..."):
                         for f in ok:
                             file_bytes = f.read()
-                            upload_to_volume(f.name, file_bytes, VOLUME_PATH)   # working
+                            upload_to_volume(f.name, file_bytes, f"{VOLUME_PATH}/{BATCH_NAME}")   # working
                             upload_to_volume(f.name, file_bytes, f"{ARCHIVE_PATH}/{BATCH_NAME}")  # archive
 
                     # Run job
@@ -281,9 +284,8 @@ with tab1:
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_checks_flat")
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoice_check_parsed")
 
-                    cleanup_volume(VOLUME_PATH)
-
-                    st.success("Session archived and reset ✅")
+                    msg = cleanup_volume(VOLUME_PATH, BATCH_NAME)
+                    st.success(f"Session archived and reset ✅ ({msg})")
 
 # --- Archived Invoices (Finance only) ---
 with tab2:
