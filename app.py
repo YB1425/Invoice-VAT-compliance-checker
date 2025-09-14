@@ -48,6 +48,11 @@ def run_sql(sql: str):
     submit_url = f"{INSTANCE}/api/2.0/sql/statements/"
     payload = {"statement": sql, "warehouse_id": WAREHOUSE_ID, "wait_timeout": "60s"}
     resp = requests.post(submit_url, headers=headers, json=payload).json()
+
+    if "statement_id" not in resp:
+        st.error(f"SQL submission failed: {resp}")
+        return pd.DataFrame()
+
     statement_id = resp["statement_id"]
 
     while True:
@@ -57,7 +62,7 @@ def run_sql(sql: str):
         time.sleep(2)
 
     if res["status"]["state"] != "SUCCEEDED":
-        st.error("SQL failed: " + str(res))
+        st.error("SQL execution failed: " + str(res))
         return pd.DataFrame()
 
     cols = [c["name"] for c in res["manifest"]["schema"]["columns"]]
@@ -99,10 +104,22 @@ def df_to_excel(df_dict):
             df.to_excel(writer, sheet_name=sheet, index=False)
     return output.getvalue()
 
+# ==== CONNECTION TEST ====
+st.subheader("🔌 Databricks Connection Check")
+test_sql = "SELECT current_date() AS today"
+try:
+    df_test = run_sql(test_sql)
+    if not df_test.empty:
+        st.success(f"✅ SQL Warehouse connected! Today's date = {df_test.iloc[0]['today']}")
+    else:
+        st.error("❌ SQL Warehouse test failed. No data returned.")
+except Exception as e:
+    st.error(f"❌ SQL Warehouse connection error: {e}")
+
 # ==== STREAMLIT UI ====
 batch_name_input = st.text_input("📦 Enter a batch name (optional)", placeholder="e.g. Sept14_Invoices")
 
-# normalize batch name or timestamp
+# normalize batch name or fallback to timestamp
 if batch_name_input and batch_name_input.strip():
     BATCH_NAME = batch_name_input.strip().replace(" ", "_")
 else:
