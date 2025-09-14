@@ -17,17 +17,16 @@ INSTANCE = st.secrets["DATABRICKS_INSTANCE"]
 TOKEN = st.secrets["DATABRICKS_TOKEN"]
 VOLUME_PATH = st.secrets["VOLUME_PATH"]
 ARCHIVE_PATH = st.secrets["ARCHIVE_PATH"]
-JOB_ID = st.secrets["JOB_ID"]           # VAT_Checker_Notebook job id
+JOB_ID = st.secrets["JOB_ID"]
 WAREHOUSE_ID = st.secrets["WAREHOUSE_ID"]
 
 headers = {"Authorization": f"Bearer {TOKEN}"}
 
 # ==== HELPERS ====
-def upload_to_volume(file_name, file_bytes):
-    url = f"{INSTANCE}/api/2.0/fs/files{VOLUME_PATH}/{file_name}"
+def upload_to_volume(file_name, file_bytes, dest_path):
+    url = f"{INSTANCE}/api/2.0/fs/files{dest_path}/{file_name}"
     resp = requests.put(url, headers=headers, data=file_bytes)
     resp.raise_for_status()
-    return {"status": "uploaded", "file": file_name}
 
 def run_parse_job():
     url = f"{INSTANCE}/api/2.1/jobs/run-now"
@@ -39,8 +38,7 @@ def wait_for_result(run_id):
     url = f"{INSTANCE}/api/2.1/jobs/runs/get?run_id={run_id}"
     while True:
         resp = requests.get(url, headers=headers).json()
-        state = resp["state"]["life_cycle_state"]
-        if state == "TERMINATED":
+        if resp["state"]["life_cycle_state"] == "TERMINATED":
             return resp
         time.sleep(5)
 
@@ -54,7 +52,6 @@ def run_sql(sql: str):
         return pd.DataFrame()
 
     statement_id = resp["statement_id"]
-
     while True:
         res = requests.get(f"{submit_url}{statement_id}", headers=headers).json()
         state = res["status"]["state"]
@@ -63,10 +60,7 @@ def run_sql(sql: str):
         time.sleep(2)
 
     if res["status"]["state"] != "SUCCEEDED":
-        if "error" in res:
-            st.error(f"SQL execution failed: {res['error'].get('message', res)}")
-        else:
-            st.error("SQL execution failed: " + str(res))
+        st.error("SQL execution failed: " + str(res))
         return pd.DataFrame()
 
     cols = [c["name"] for c in res["manifest"]["schema"]["columns"]]
@@ -82,35 +76,6 @@ def run_sql(sql: str):
 
     return pd.DataFrame(rows, columns=cols)
 
-
-def list_files(volume_path):
-    url = f"{INSTANCE}/api/2.0/fs/files{volume_path}?recursive=true"
-    resp = requests.get(url, headers=headers).json()
-    return resp.get("files", [])
-
-def copy_to_archive(folder):
-    files = list_files(VOLUME_PATH)
-    if not files:
-        return "No files to archive."
-
-    for f in files:
-        src_url = f"{INSTANCE}/api/2.0/fs/files{f['path']}"
-        dest_path = f"{ARCHIVE_PATH}/{folder}/{f['name']}"
-        dest_url = f"{INSTANCE}/api/2.0/fs/files{dest_path}"
-
-        data = requests.get(src_url, headers=headers).content
-        resp = requests.put(dest_url, headers=headers, data=data)
-        resp.raise_for_status()
-
-    return f"Archived {len(files)} files to {ARCHIVE_PATH}/{folder}"
-
-def clear_volume():
-    files = list_files(VOLUME_PATH)
-    for f in files:
-        url = f"{INSTANCE}/api/2.0/fs/files{f['path']}"
-        requests.delete(url, headers=headers)
-    return f"Cleared {len(files)} files from {VOLUME_PATH}"
-
 def df_to_excel(df_dict):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -121,110 +86,153 @@ def df_to_excel(df_dict):
 # ==== CONNECTION TEST ====
 st.subheader("🔌 Databricks Connection Check")
 test_sql = "SELECT current_date() AS today"
-try:
-    df_test = run_sql(test_sql)
-    if not df_test.empty and "today" in df_test.columns:
-        today_val = df_test.at[0, "today"]
-        st.success(f"✅ SQL Warehouse connected! Today's date = {today_val}")
-    else:
-        st.error("❌ SQL Warehouse test failed. No data returned.")
-except Exception as e:
-    st.error(f"❌ SQL Warehouse connection error: {e}")
-
-# ==== STREAMLIT UI ====
-batch_name_input = st.text_input("📦 Enter a batch name (optional)", placeholder="e.g. Sept14_Invoices")
-
-# normalize batch name or fallback to timestamp
-if batch_name_input and batch_name_input.strip():
-    BATCH_NAME = batch_name_input.strip().replace(" ", "_")
+df_test = run_sql(test_sql)
+if not df_test.empty and "today" in df_test.columns:
+    st.success(f"✅ SQL Warehouse connected! Today's date = {df_test.at[0, 'today']}")
 else:
-    BATCH_NAME = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    st.error("❌ SQL Warehouse test failed.")
 
-uploads = st.file_uploader("Upload up to 8 invoice PDFs", type=["pdf"], accept_multiple_files=True)
+# ==== TABS ====
+tab1, tab2, tab3 = st.tabs(["📥 New Compliance Check", "📂 Archived Invoices", "📂 Archived Failed Checks"])
 
-if uploads:
-    if len(uploads) > MAX_FILES:
-        st.error(f"⚠️ You can only upload up to {MAX_FILES} files at once. Please remove extra files.")
+with tab1:
+    batch_name_input = st.text_input("📦 Enter a batch name (optional)", placeholder="e.g. Sept14_Invoices")
+    if batch_name_input and batch_name_input.strip():
+        BATCH_NAME = batch_name_input.strip().replace(" ", "_")
     else:
-        too_big = [f for f in uploads if f.size > MAX_BYTES]
-        ok = [f for f in uploads if f.size <= MAX_BYTES]
+        BATCH_NAME = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
 
-        if too_big:
-            st.error(f"{len(too_big)} file(s) exceed {MAX_MB} MB and were skipped: "
-                     + ", ".join(f.name for f in too_big))
+    uploads = st.file_uploader("Upload up to 8 invoice PDFs", type=["pdf"], accept_multiple_files=True)
 
-        if ok:
-            st.success(f"Received {len(ok)} file(s).")
-            st.dataframe(pd.DataFrame(
-                [{"File": f.name, "Size (MB)": round(f.size / 1024 / 1024, 2)} for f in ok]
-            ))
+    if uploads:
+        if len(uploads) > MAX_FILES:
+            st.error(f"⚠️ You can only upload up to {MAX_FILES} files at once.")
+        else:
+            too_big = [f for f in uploads if f.size > MAX_BYTES]
+            ok = [f for f in uploads if f.size <= MAX_BYTES]
 
-            if st.button("🚀 Run VAT Compliance Check"):
-                # Upload files
-                with st.spinner("Uploading files to Databricks..."):
-                    for f in ok:
-                        upload_to_volume(f.name, f.read())
+            if too_big:
+                st.error(f"{len(too_big)} file(s) exceed {MAX_MB} MB and were skipped: "
+                         + ", ".join(f.name for f in too_big))
 
-                # Trigger job
-                with st.spinner("Running Databricks VAT_Checker_Notebook..."):
-                    run_id = run_parse_job()
-                    wait_for_result(run_id)
+            if ok:
+                st.success(f"Received {len(ok)} file(s).")
+                st.dataframe(pd.DataFrame(
+                    [{"File": f.name, "Size (MB)": round(f.size / 1024 / 1024, 2)} for f in ok]
+                ))
 
-                st.success("✅ Job completed! Fetching results...")
+                if st.button("🚀 Run VAT Compliance Check"):
+                    # Upload files (working + archive immediately)
+                    with st.spinner("Uploading files..."):
+                        for f in ok:
+                            file_bytes = f.read()
+                            upload_to_volume(f.name, file_bytes, VOLUME_PATH)   # working
+                            upload_to_volume(f.name, file_bytes, f"{ARCHIVE_PATH}/{BATCH_NAME}")  # archive
 
-                # --- Summary ---
-                summary_sql = """
-                SELECT path, invoice_number, issue_date, final_decision
-                FROM dev_uc_catalog.default.zatca_invoices_head
-                ORDER BY path;
-                """
-                df_summary = run_sql(summary_sql)
-                st.subheader("📄 Invoice Summary")
-                st.dataframe(df_summary)
+                    # Run job
+                    with st.spinner("Running Databricks job..."):
+                        run_id = run_parse_job()
+                        wait_for_result(run_id)
 
-                # --- Detailed failures ---
-                details_sql = """
-                SELECT h.path, h.invoice_number, h.issue_date, h.final_decision,
-                       c.id AS failed_rule_id, c.name AS failed_rule_name, c.reason AS failed_reason
-                FROM dev_uc_catalog.default.zatca_invoices_head h
-                JOIN dev_uc_catalog.default.zatca_checks_flat c
-                  ON h.path = c.path
-                WHERE c.result = 'fail'
-                ORDER BY h.path, c.id;
-                """
-                df_details = run_sql(details_sql)
-                if not df_details.empty:
-                    st.subheader("⚠️ Failed Checks")
-                    st.dataframe(df_details)
-                else:
-                    st.success("🎉 All invoices passed compliance checks!")
+                    st.success("✅ Job completed! Fetching results...")
 
-                # --- Export buttons ---
-                st.subheader("📥 Export Results")
-                excel_data = df_to_excel({"Summary": df_summary, "Failed Checks": df_details})
-                st.download_button("⬇️ Download Excel",
-                                   data=excel_data,
-                                   file_name=f"vat_compliance_results_{BATCH_NAME}.xlsx")
+                    # --- Summary ---
+                    summary_sql = """
+                    SELECT path, invoice_number, issue_date, final_decision
+                    FROM dev_uc_catalog.default.zatca_invoices_head
+                    ORDER BY path;
+                    """
+                    df_summary = run_sql(summary_sql)
+                    st.subheader("📄 Invoice Summary")
+                    st.dataframe(df_summary)
 
-                st.download_button("⬇️ Download Summary CSV",
-                                   data=df_summary.to_csv(index=False).encode("utf-8"),
-                                   file_name=f"vat_summary_{BATCH_NAME}.csv",
-                                   mime="text/csv")
+                    # --- Detailed failures ---
+                    details_sql = """
+                    SELECT h.path, h.invoice_number, h.issue_date, h.final_decision,
+                           c.id AS failed_rule_id, c.name AS failed_rule_name, c.reason AS failed_reason
+                    FROM dev_uc_catalog.default.zatca_invoices_head h
+                    JOIN dev_uc_catalog.default.zatca_checks_flat c
+                      ON h.path = c.path
+                    WHERE c.result = 'fail'
+                    ORDER BY h.path, c.id;
+                    """
+                    df_details = run_sql(details_sql)
+                    if not df_details.empty:
+                        st.subheader("⚠️ Failed Checks")
+                        st.dataframe(df_details)
+                    else:
+                        st.success("🎉 All invoices passed compliance checks!")
 
-                if not df_details.empty:
-                    st.download_button("⬇️ Download Failed Checks CSV",
-                                       data=df_details.to_csv(index=False).encode("utf-8"),
-                                       file_name=f"vat_failed_checks_{BATCH_NAME}.csv",
-                                       mime="text/csv")
+                    # --- Export buttons ---
+                    st.subheader("📥 Export Results")
+                    excel_data = df_to_excel({"Summary": df_summary, "Failed Checks": df_details})
+                    st.download_button("⬇️ Download Excel",
+                                       data=excel_data,
+                                       file_name=f"vat_compliance_results_{BATCH_NAME}.xlsx")
 
-                # --- Archive & Reset ---
-                with st.spinner("Archiving processed files..."):
-                    msg = copy_to_archive(BATCH_NAME)
-                    st.success(msg)
+                    # --- Archive results in SQL ---
+                    with st.spinner("Archiving SQL results..."):
+                        run_sql(f"""
+                            INSERT INTO dev_uc_catalog.default.zatca_invoices_head_archive
+                            SELECT *, '{BATCH_NAME}' AS batch_name
+                            FROM dev_uc_catalog.default.zatca_invoices_head
+                        """)
+                        run_sql(f"""
+                            INSERT INTO dev_uc_catalog.default.zatca_checks_flat_archive
+                            SELECT *, '{BATCH_NAME}' AS batch_name
+                            FROM dev_uc_catalog.default.zatca_checks_flat
+                        """)
 
-                with st.spinner("Resetting volume for next batch..."):
-                    msg = clear_volume()
-                    st.info(msg)
+                    # --- Cleanup working tables ---
+                    with st.spinner("Cleaning up..."):
+                        run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoices_head")
+                        run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_checks_flat")
+                        run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoice_check_parsed")
 
-else:
-    st.write("Upload one or more PDF files (≤ 75 MB each, max 8 files).")
+                    st.success("Session archived and reset ✅")
+
+with tab2:
+    st.subheader("📂 Archived Invoices")
+    batch_list = run_sql("SELECT DISTINCT batch_name FROM dev_uc_catalog.default.zatca_invoices_head_archive ORDER BY batch_name DESC")
+    if not batch_list.empty:
+        selected_batch = st.selectbox("Choose a batch", batch_list["batch_name"])
+        df_archive_invoices = run_sql(f"""
+            SELECT * FROM dev_uc_catalog.default.zatca_invoices_head_archive
+            WHERE batch_name = '{selected_batch}'
+            ORDER BY path
+        """)
+        st.dataframe(df_archive_invoices)
+        st.download_button("⬇️ Download Invoices Archive CSV",
+                           data=df_archive_invoices.to_csv(index=False).encode("utf-8"),
+                           file_name=f"invoices_{selected_batch}.csv",
+                           mime="text/csv")
+    else:
+        st.info("No archived invoices found yet.")
+
+with tab3:
+    st.subheader("📂 Archived Failed Checks")
+    batch_list = run_sql("SELECT DISTINCT batch_name FROM dev_uc_catalog.default.zatca_checks_flat_archive ORDER BY batch_name DESC")
+    if not batch_list.empty:
+        selected_batch = st.selectbox("Choose a batch", batch_list["batch_name"])
+        df_archive_checks = run_sql(f"""
+            SELECT * FROM dev_uc_catalog.default.zatca_checks_flat_archive
+            WHERE batch_name = '{selected_batch}'
+            ORDER BY path, id
+        """)
+        st.dataframe(df_archive_checks)
+        st.download_button("⬇️ Download Checks Archive CSV",
+                           data=df_archive_checks.to_csv(index=False).encode("utf-8"),
+                           file_name=f"checks_{selected_batch}.csv",
+                           mime="text/csv")
+    else:
+        st.info("No archived checks found yet.")
+
+# ==== DISCLAIMER ====
+st.markdown("""
+---
+⚠️ **Disclaimer:**  
+This program is a **proof-of-concept tool**.  
+- Results may be inaccurate or incomplete.  
+- It does **not** validate electronic VAT **QR codes** or **UBL XML** compliance.  
+For official ZATCA compliance, always use certified solutions.
+""")
