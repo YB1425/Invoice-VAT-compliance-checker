@@ -63,6 +63,10 @@ def run_sql(sql: str):
         st.error("SQL execution failed: " + str(res))
         return pd.DataFrame()
 
+    # If result key missing, return empty dataframe
+    if "result" not in res or "data_array" not in res["result"]:
+        return pd.DataFrame()
+
     cols = [c["name"] for c in res["manifest"]["schema"]["columns"]]
     rows = []
     for r in res["result"]["data_array"]:
