@@ -46,7 +46,7 @@ def wait_for_result(run_id):
 
 def run_sql(sql: str):
     submit_url = f"{INSTANCE}/api/2.0/sql/statements/"
-    payload = {"statement": sql, "warehouse_id": WAREHOUSE_ID, "wait_timeout": "60s"}
+    payload = {"statement": sql, "warehouse_id": WAREHOUSE_ID, "wait_timeout": "30s"}
     resp = requests.post(submit_url, headers=headers, json=payload).json()
 
     if "statement_id" not in resp:
@@ -57,12 +57,17 @@ def run_sql(sql: str):
 
     while True:
         res = requests.get(f"{submit_url}{statement_id}", headers=headers).json()
-        if res["status"]["state"] in ["SUCCEEDED", "FAILED", "CANCELED"]:
+        state = res["status"]["state"]
+        if state in ["SUCCEEDED", "FAILED", "CANCELED"]:
             break
         time.sleep(2)
 
     if res["status"]["state"] != "SUCCEEDED":
-        st.error("SQL execution failed: " + str(res))
+        # Show detailed error if available
+        if "error" in res:
+            st.error(f"SQL execution failed: {res['error'].get('message', res)}")
+        else:
+            st.error("SQL execution failed: " + str(res))
         return pd.DataFrame()
 
     cols = [c["name"] for c in res["manifest"]["schema"]["columns"]]
