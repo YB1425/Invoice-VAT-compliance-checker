@@ -114,8 +114,9 @@ st.subheader("🔌 Databricks Connection Check")
 test_sql = "SELECT current_date() AS today"
 try:
     df_test = run_sql(test_sql)
-    if not df_test.empty:
-        st.success(f"✅ SQL Warehouse connected! Today's date = {df_test.iloc[0]['today']}")
+    if not df_test.empty and "today" in df_test.columns:
+        today_val = df_test.at[0, "today"]
+        st.success(f"✅ SQL Warehouse connected! Today's date = {today_val}")
     else:
         st.error("❌ SQL Warehouse test failed. No data returned.")
 except Exception as e:
