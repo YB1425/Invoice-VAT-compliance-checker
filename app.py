@@ -7,7 +7,6 @@ from io import BytesIO
 
 # ==== CONFIG ====
 st.set_page_config(page_title="Invoice Compliance Checker", layout="centered")
-st.title("🚗 Invoice Compliance Checker")
 
 MAX_MB = 75
 MAX_BYTES = MAX_MB * 1024 * 1024
@@ -20,7 +19,6 @@ ARCHIVE_PATH = st.secrets["ARCHIVE_PATH"]
 JOB_ID = st.secrets["JOB_ID"]
 WAREHOUSE_ID = st.secrets["WAREHOUSE_ID"]
 
-# Passwords
 MAIN_PASSWORD = st.secrets["MAIN_PASSWORD"]
 FINANCE_PASSWORD = st.secrets["FINANCE_PASSWORD"]
 
@@ -28,23 +26,124 @@ headers = {"Authorization": f"Bearer {TOKEN}"}
 
 # ==== SESSION STATE ====
 if "role" not in st.session_state:
-    st.session_state.role = None  # can be "main" or "finance"
+    st.session_state.role = None  # "main" or "finance"
 
-# ==== AUTH HELPERS ====
-def check_password(pw: str):
-    if pw == FINANCE_PASSWORD:
-        st.session_state.role = "finance"
-        return True
-    elif pw == MAIN_PASSWORD:
-        st.session_state.role = "main"
-        return True
-    return False
+if "language" not in st.session_state:
+    st.session_state.language = "en"  # default English
 
-def logout():
-    st.session_state.role = None
-    st.experimental_rerun()
+# ==== LANGUAGE STRINGS ====
+STRINGS = {
+    "en": {
+        "title": "🚗 Invoice Compliance Checker",
+        "main_tab": "📥 New Compliance Check",
+        "inv_tab": "📂 Archived Invoices",
+        "fail_tab": "📂 Archived Failed Checks",
+        "password_prompt": "🔑 Enter password to access this section",
+        "finance_prompt": "Finance-only access. Please enter the finance password in Tab 1.",
+        "logout": "🚪 Logout",
+        "batch_name": "📦 Enter a batch name (optional)",
+        "upload_label": "Upload up to 8 invoice PDFs",
+        "received": "Received {n} file(s).",
+        "too_big": "{n} file(s) exceed {mb} MB and were skipped: {files}",
+        "run_check": "🚀 Run VAT Compliance Check",
+        "summary": "📄 Invoice Summary",
+        "failed": "⚠️ Failed Checks",
+        "all_passed": "🎉 All invoices passed compliance checks!",
+        "export": "📥 Export Results",
+        "download_excel": "⬇️ Download Excel",
+        "download_inv_csv": "⬇️ Download Invoices Archive CSV",
+        "download_fail_csv": "⬇️ Download Checks Archive CSV",
+        "no_archives": "No archived data found yet.",
+        "connection_ok": "✅ SQL Warehouse connected! Today's date = {date}",
+        "connection_fail": "❌ SQL Warehouse test failed.",
+        "disclaimer": """
+---
+⚠️ **Disclaimer:**  
+This program is a **proof-of-concept tool**.  
+- Results may be inaccurate or incomplete.  
+- It does **not** validate electronic VAT **QR codes** or **UBL XML** compliance.  
+For official ZATCA compliance, always use certified solutions.
+"""
+    },
+    "ar": {
+        "title": "🚗 أداة التحقق من مطابقة الفواتير",
+        "main_tab": "📥 التحقق من الفواتير الجديدة",
+        "inv_tab": "📂 الفواتير المؤرشفة",
+        "fail_tab": "📂 الإخفاقات المؤرشفة",
+        "password_prompt": "🔑 أدخل كلمة المرور للوصول إلى هذا القسم",
+        "finance_prompt": "الوصول خاص بقسم المالية. يرجى إدخال كلمة مرور المالية في التبويب الأول.",
+        "logout": "🚪 تسجيل الخروج",
+        "batch_name": "📦 أدخل اسم الدفعة (اختياري)",
+        "upload_label": "قم برفع ما يصل إلى 8 ملفات PDF للفواتير",
+        "received": "تم استلام {n} ملف(ات).",
+        "too_big": "{n} ملف(ات) تتجاوز {mb} ميغابايت وتم تجاهلها: {files}",
+        "run_check": "🚀 تشغيل التحقق من مطابقة ضريبة القيمة المضافة",
+        "summary": "📄 ملخص الفواتير",
+        "failed": "⚠️ الفحوصات الفاشلة",
+        "all_passed": "🎉 جميع الفواتير اجتازت التحقق من المطابقة!",
+        "export": "📥 تنزيل النتائج",
+        "download_excel": "⬇️ تنزيل ملف Excel",
+        "download_inv_csv": "⬇️ تنزيل أرشيف الفواتير CSV",
+        "download_fail_csv": "⬇️ تنزيل أرشيف الإخفاقات CSV",
+        "no_archives": "لا توجد بيانات مؤرشفة حتى الآن.",
+        "connection_ok": "✅ تم الاتصال بـ SQL Warehouse! تاريخ اليوم = {date}",
+        "connection_fail": "❌ فشل اختبار الاتصال بـ SQL Warehouse.",
+        "disclaimer": """
+---
+⚠️ **تنويه:**  
+هذه الأداة مجرد **إثبات مفهوم**.  
+- قد تكون النتائج غير دقيقة أو غير كاملة.  
+- لا تتحقق من **رموز QR الإلكترونية** أو **UBL XML** الخاصة بضريبة القيمة المضافة.  
+للحصول على مطابقة رسمية مع هيئة الزكاة والضريبة والجمارك، يرجى استخدام الحلول المعتمدة.
+"""
+    }
+}
+
+# ==== LANG SELECTOR + SIDEBAR LOGOUT ====
+with st.sidebar:
+    lang = st.radio("🌐 Language / اللغة", ["English", "العربية"])
+    st.session_state.language = "ar" if lang == "العربية" else "en"
+
+    if st.session_state.role:
+        st.success(f"Logged in as: {st.session_state.role}")
+        if st.button(STRINGS[st.session_state.language]["logout"]):
+            st.session_state.role = None
+            st.experimental_rerun()
+
+T = STRINGS[st.session_state.language]
+
+st.title(T["title"])
 
 # ==== HELPERS ====
+@st.cache_data(ttl=60)
+def run_sql(sql: str):
+    submit_url = f"{INSTANCE}/api/2.0/sql/statements/"
+    payload = {"statement": sql, "warehouse_id": WAREHOUSE_ID, "wait_timeout": "30s"}
+    resp = requests.post(submit_url, headers=headers, json=payload).json()
+    if "statement_id" not in resp:
+        return pd.DataFrame()
+    statement_id = resp["statement_id"]
+
+    while True:
+        res = requests.get(f"{submit_url}{statement_id}", headers=headers).json()
+        if res["status"]["state"] in ["SUCCEEDED", "FAILED", "CANCELED"]:
+            break
+        time.sleep(2)
+
+    if res["status"]["state"] != "SUCCEEDED":
+        return pd.DataFrame()
+    if "result" not in res or "data_array" not in res["result"]:
+        return pd.DataFrame()
+
+    cols = [c["name"] for c in res["manifest"]["schema"]["columns"]]
+    rows = []
+    for r in res["result"]["data_array"]:
+        row = []
+        for c in r:
+            row.append(c.get("value") if isinstance(c, dict) else c)
+        rows.append(row)
+    return pd.DataFrame(rows, columns=cols)
+
 def upload_to_volume(file_name, file_bytes, dest_path):
     url = f"{INSTANCE}/api/2.0/fs/files{dest_path}/{file_name}"
     resp = requests.put(url, headers=headers, data=file_bytes)
@@ -64,41 +163,6 @@ def wait_for_result(run_id):
             return resp
         time.sleep(5)
 
-def run_sql(sql: str):
-    submit_url = f"{INSTANCE}/api/2.0/sql/statements/"
-    payload = {"statement": sql, "warehouse_id": WAREHOUSE_ID, "wait_timeout": "30s"}
-    resp = requests.post(submit_url, headers=headers, json=payload).json()
-
-    if "statement_id" not in resp:
-        return pd.DataFrame()
-
-    statement_id = resp["statement_id"]
-    while True:
-        res = requests.get(f"{submit_url}{statement_id}", headers=headers).json()
-        state = res["status"]["state"]
-        if state in ["SUCCEEDED", "FAILED", "CANCELED"]:
-            break
-        time.sleep(2)
-
-    if res["status"]["state"] != "SUCCEEDED":
-        return pd.DataFrame()
-
-    if "result" not in res or "data_array" not in res["result"]:
-        return pd.DataFrame()
-
-    cols = [c["name"] for c in res["manifest"]["schema"]["columns"]]
-    rows = []
-    for r in res["result"]["data_array"]:
-        row = []
-        for c in r:
-            if isinstance(c, dict) and "value" in c:
-                row.append(c["value"])
-            else:
-                row.append(c)
-        rows.append(row)
-
-    return pd.DataFrame(rows, columns=cols)
-
 def df_to_excel(df_dict):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -106,37 +170,29 @@ def df_to_excel(df_dict):
             df.to_excel(writer, sheet_name=sheet, index=False)
     return output.getvalue()
 
-# ==== CONNECTION TEST ====
-st.subheader("🔌 Databricks Connection Check")
-df_test = run_sql("SELECT current_date() AS today")
-if not df_test.empty and "today" in df_test.columns:
-    st.success(f"✅ SQL Warehouse connected! Today's date = {df_test.at[0, 'today']}")
-else:
-    st.error("❌ SQL Warehouse test failed.")
-
 # ==== TABS ====
-tab1, tab2, tab3 = st.tabs(["📥 New Compliance Check", "📂 Archived Invoices", "📂 Archived Failed Checks"])
+tab1, tab2, tab3 = st.tabs([T["main_tab"], T["inv_tab"], T["fail_tab"]])
 
 # --- Main Tab ---
 with tab1:
     if st.session_state.role not in ["main", "finance"]:
-        pw = st.text_input("🔑 Enter password to access this section", type="password", key="main_pw")
-        if pw and check_password(pw):
+        pw = st.text_input(T["password_prompt"], type="password", key="main_pw")
+        if pw == MAIN_PASSWORD:
+            st.session_state.role = "main"
             st.success("Access granted ✅")
+        elif pw == FINANCE_PASSWORD:
+            st.session_state.role = "finance"
+            st.success("Finance access granted ✅")
         else:
-            st.warning("Please enter the correct password.")
             st.stop()
-    else:
-        if st.button("🚪 Logout"):
-            logout()
 
-    batch_name_input = st.text_input("📦 Enter a batch name (optional)", placeholder="e.g. Sept14_Invoices")
+    batch_name_input = st.text_input(T["batch_name"], placeholder="e.g. Sept14_Invoices")
     if batch_name_input and batch_name_input.strip():
         BATCH_NAME = batch_name_input.strip().replace(" ", "_")
     else:
         BATCH_NAME = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
 
-    uploads = st.file_uploader("Upload up to 8 invoice PDFs", type=["pdf"], accept_multiple_files=True)
+    uploads = st.file_uploader(T["upload_label"], type=["pdf"], accept_multiple_files=True)
 
     if uploads:
         if len(uploads) > MAX_FILES:
@@ -146,16 +202,15 @@ with tab1:
             ok = [f for f in uploads if f.size <= MAX_BYTES]
 
             if too_big:
-                st.error(f"{len(too_big)} file(s) exceed {MAX_MB} MB and were skipped: "
-                         + ", ".join(f.name for f in too_big))
+                st.error(T["too_big"].format(n=len(too_big), mb=MAX_MB, files=", ".join(f.name for f in too_big)))
 
             if ok:
-                st.success(f"Received {len(ok)} file(s).")
+                st.success(T["received"].format(n=len(ok)))
                 st.dataframe(pd.DataFrame(
                     [{"File": f.name, "Size (MB)": round(f.size / 1024 / 1024, 2)} for f in ok]
                 ))
 
-                if st.button("🚀 Run VAT Compliance Check"):
+                if st.button(T["run_check"]):
                     # Upload files (working + archive immediately)
                     with st.spinner("Uploading files..."):
                         for f in ok:
@@ -176,7 +231,7 @@ with tab1:
                         FROM dev_uc_catalog.default.zatca_invoices_head
                         ORDER BY path
                     """)
-                    st.subheader("📄 Invoice Summary")
+                    st.subheader(T["summary"])
                     st.dataframe(df_summary)
 
                     # --- Failed checks ---
@@ -190,19 +245,19 @@ with tab1:
                         ORDER BY h.path, c.id
                     """)
                     if not df_details.empty:
-                        st.subheader("⚠️ Failed Checks")
+                        st.subheader(T["failed"])
                         st.dataframe(df_details)
                     else:
-                        st.success("🎉 All invoices passed compliance checks!")
+                        st.success(T["all_passed"])
 
                     # --- Export buttons ---
-                    st.subheader("📥 Export Results")
+                    st.subheader(T["export"])
                     excel_data = df_to_excel({"Summary": df_summary, "Failed Checks": df_details})
-                    st.download_button("⬇️ Download Excel",
+                    st.download_button(T["download_excel"],
                                        data=excel_data,
                                        file_name=f"vat_compliance_results_{BATCH_NAME}.xlsx")
 
-                    # --- Archive results in SQL ---
+                    # Archive & reset DB
                     run_sql(f"""
                         INSERT INTO dev_uc_catalog.default.zatca_invoices_head_archive
                         SELECT *, '{BATCH_NAME}' AS batch_name
@@ -213,8 +268,6 @@ with tab1:
                         SELECT *, '{BATCH_NAME}' AS batch_name
                         FROM dev_uc_catalog.default.zatca_checks_flat
                     """)
-
-                    # --- Cleanup working tables ---
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoices_head")
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_checks_flat")
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoice_check_parsed")
@@ -224,13 +277,10 @@ with tab1:
 # --- Archived Invoices (Finance only) ---
 with tab2:
     if st.session_state.role != "finance":
-        st.warning("Finance-only access. Please enter the finance password in Tab 1.")
+        st.warning(T["finance_prompt"])
         st.stop()
-    else:
-        if st.button("🚪 Logout", key="logout_fin1"):
-            logout()
 
-    st.subheader("📂 Archived Invoices")
+    st.subheader(T["inv_tab"])
     batch_list = run_sql("SELECT DISTINCT batch_name FROM dev_uc_catalog.default.zatca_invoices_head_archive ORDER BY batch_name DESC")
     if not batch_list.empty:
         selected_batch = st.selectbox("Choose a batch", batch_list["batch_name"])
@@ -240,23 +290,20 @@ with tab2:
             ORDER BY path
         """)
         st.dataframe(df_archive_invoices)
-        st.download_button("⬇️ Download Invoices Archive CSV",
+        st.download_button(T["download_inv_csv"],
                            data=df_archive_invoices.to_csv(index=False).encode("utf-8"),
                            file_name=f"invoices_{selected_batch}.csv",
                            mime="text/csv")
     else:
-        st.info("No archived invoices found yet.")
+        st.info(T["no_archives"])
 
 # --- Archived Failed Checks (Finance only) ---
 with tab3:
     if st.session_state.role != "finance":
-        st.warning("Finance-only access. Please enter the finance password in Tab 1.")
+        st.warning(T["finance_prompt"])
         st.stop()
-    else:
-        if st.button("🚪 Logout", key="logout_fin2"):
-            logout()
 
-    st.subheader("📂 Archived Failed Checks")
+    st.subheader(T["fail_tab"])
     batch_list = run_sql("SELECT DISTINCT batch_name FROM dev_uc_catalog.default.zatca_checks_flat_archive ORDER BY batch_name DESC")
     if not batch_list.empty:
         selected_batch = st.selectbox("Choose a batch", batch_list["batch_name"], key="batch_checks")
@@ -266,19 +313,12 @@ with tab3:
             ORDER BY path, id
         """)
         st.dataframe(df_archive_checks)
-        st.download_button("⬇️ Download Checks Archive CSV",
+        st.download_button(T["download_fail_csv"],
                            data=df_archive_checks.to_csv(index=False).encode("utf-8"),
                            file_name=f"checks_{selected_batch}.csv",
                            mime="text/csv")
     else:
-        st.info("No archived checks found yet.")
+        st.info(T["no_archives"])
 
 # ==== DISCLAIMER ====
-st.markdown("""
----
-⚠️ **Disclaimer:**  
-This program is a **proof-of-concept tool**.  
-- Results may be inaccurate or incomplete.  
-- It does **not** validate electronic VAT **QR codes** or **UBL XML** compliance.  
-For official ZATCA compliance, always use certified solutions.
-""")
+st.markdown(T["disclaimer"])
