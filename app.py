@@ -108,7 +108,7 @@ with st.sidebar:
         st.success(f"Logged in as: {st.session_state.role}")
         if st.button(STRINGS[st.session_state.language]["logout"]):
             st.session_state.role = None
-            st.experimental_rerun()
+            st.rerun()
 
 T = STRINGS[st.session_state.language]
 
@@ -283,7 +283,7 @@ with tab2:
     st.subheader(T["inv_tab"])
     batch_list = run_sql("SELECT DISTINCT batch_name FROM dev_uc_catalog.default.zatca_invoices_head_archive ORDER BY batch_name DESC")
     if not batch_list.empty:
-        selected_batch = st.selectbox("Choose a batch", batch_list["batch_name"])
+        selected_batch = st.selectbox("Choose a batch", batch_list["batch_name"], key="batch_invoices")
         df_archive_invoices = run_sql(f"""
             SELECT * FROM dev_uc_catalog.default.zatca_invoices_head_archive
             WHERE batch_name = '{selected_batch}'
