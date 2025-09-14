@@ -171,7 +171,11 @@ def df_to_excel(df_dict):
         for sheet, df in df_dict.items():
             df.to_excel(writer, sheet_name=sheet, index=False)
     return output.getvalue()
-
+    
+def cleanup_volume(path):
+    url = f"{INSTANCE}/api/2.0/fs/files{path}?recursive=true"
+    resp = requests.delete(url, headers=headers)
+    resp.raise_for_status()
 # ==== TABS ====
 tab1, tab2, tab3 = st.tabs([T["main_tab"], T["inv_tab"], T["fail_tab"]])
 
@@ -276,6 +280,8 @@ with tab1:
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoices_head")
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_checks_flat")
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoice_check_parsed")
+
+                    cleanup_volume(VOLUME_PATH)
 
                     st.success("Session archived and reset ✅")
 
