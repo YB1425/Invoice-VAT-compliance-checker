@@ -63,7 +63,6 @@ def run_sql(sql: str):
         time.sleep(2)
 
     if res["status"]["state"] != "SUCCEEDED":
-        # Show detailed error if available
         if "error" in res:
             st.error(f"SQL execution failed: {res['error'].get('message', res)}")
         else:
@@ -71,8 +70,18 @@ def run_sql(sql: str):
         return pd.DataFrame()
 
     cols = [c["name"] for c in res["manifest"]["schema"]["columns"]]
-    rows = [[c["value"] for c in r] for r in res["result"]["data_array"]]
+    rows = []
+    for r in res["result"]["data_array"]:
+        row = []
+        for c in r:
+            if isinstance(c, dict) and "value" in c:
+                row.append(c["value"])
+            else:
+                row.append(c)
+        rows.append(row)
+
     return pd.DataFrame(rows, columns=cols)
+
 
 def list_files(volume_path):
     url = f"{INSTANCE}/api/2.0/fs/files{volume_path}?recursive=true"
