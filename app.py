@@ -113,6 +113,19 @@ with st.sidebar:
             st.rerun()
 
 T = STRINGS[st.session_state.language]
+# ==== LOGO ====
+LOGO_LIGHT = "assets/logo_light.png"
+LOGO_DARK = "assets/logo_dark.png"
+
+# Streamlit automatically picks correct one for light/dark theme
+st.logo(
+    image=LOGO_LIGHT,     # shown in light mode
+    icon_image=LOGO_DARK, # shown in dark mode
+    link="https://autohub.com"  # optional
+)
+
+# Add a little spacing after the logo
+st.markdown("<br>", unsafe_allow_html=True)
 
 st.title(T["title"])
 
