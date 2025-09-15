@@ -187,7 +187,7 @@ def df_to_excel(df_dict):
 
 def cleanup_volume(path, batch_name):
     batch_folder = f"{path}/{batch_name}"
-    list_url = f"{INSTANCE}/api/2.0/fs/files{batch_folder}?recursive=true"
+    list_url = f"{INSTANCE}/api/2.0/fs/files{batch_folder}"
     resp = requests.get(list_url, headers=headers)
 
     if resp.status_code == 404:
@@ -207,10 +207,14 @@ def cleanup_volume(path, batch_name):
         else:
             failed += 1
 
-    # Try deleting the folder itself
+    # Finally try to delete the folder itself
     requests.delete(f"{INSTANCE}/api/2.0/fs/files{batch_folder}", headers=headers)
 
-    return f"Deleted {deleted} files ({failed} failed) in {batch_folder}"
+    msg = f"Deleted {deleted} files"
+    if failed > 0:
+        msg += f", {failed} failed"
+    msg += f" in {batch_folder}"
+    return msg
 # ==== TABS ====
 tab1, tab2, tab3 = st.tabs([T["main_tab"], T["inv_tab"], T["fail_tab"]])
 
