@@ -186,13 +186,18 @@ def df_to_excel(df_dict):
     return output.getvalue()
 
 def cleanup_volume(path, batch_name):
-    list_url = f"{INSTANCE}/api/2.0/fs/files{path}?recursive=true"
+    # List files in the path (no ?recursive=true here)
+    list_url = f"{INSTANCE}/api/2.0/fs/files{path}"
     resp = requests.get(list_url, headers=headers)
+    if resp.status_code == 404:
+        return f"Batch folder {batch_name} not found"
     resp.raise_for_status()
+
     files = resp.json().get("files", [])
 
-    # Find all files in this batch
+    # Filter only files belonging to this batch
     batch_files = [f for f in files if f["path"].startswith(f"{path}/{batch_name}")]
+
     if not batch_files:
         return f"No files found for batch {batch_name}"
 
@@ -205,12 +210,7 @@ def cleanup_volume(path, batch_name):
         else:
             failed += 1
 
-    msg = f"Deleted {deleted} file(s)"
-    if failed:
-        msg += f", {failed} failed"
-    msg += f" for batch {batch_name}"
-    return msg
-
+    return f"Deleted {deleted} files, {failed} failed for batch {batch_name}"
 # ==== TABS ====
 tab1, tab2, tab3 = st.tabs([T["main_tab"], T["inv_tab"], T["fail_tab"]])
 
