@@ -191,7 +191,8 @@ def df_to_excel(df_dict):
         for sheet, df in df_dict.items():
             df.to_excel(writer, sheet_name=sheet, index=False)
     return output.getvalue()
-
+"""
+#redundant for now needs better implementation
 def cleanup_volume(path, batch_name):
     batch_folder = f"{path}/{batch_name}"
     list_url = f"{INSTANCE}/api/2.0/fs/files{batch_folder}"
@@ -222,6 +223,7 @@ def cleanup_volume(path, batch_name):
         msg += f", {failed} failed"
     msg += f" in {batch_folder}"
     return msg
+    """
 # ==== TABS ====
 tab1, tab2, tab3 = st.tabs([T["main_tab"], T["inv_tab"], T["fail_tab"]])
 
