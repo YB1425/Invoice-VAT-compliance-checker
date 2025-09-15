@@ -186,45 +186,29 @@ def df_to_excel(df_dict):
     return output.getvalue()
 
 def cleanup_volume(path, batch_name):
-    # Target the batch folder directly
-    batch_folder = f"{path}/{batch_name}"
-    list_url = f"{INSTANCE}/api/2.0/fs/files{batch_folder}?recursive=true"
+    list_url = f"{INSTANCE}/api/2.0/fs/files{path}?recursive=true"
     resp = requests.get(list_url, headers=headers)
-
-    # If folder doesn't exist, just return gracefully
-    if resp.status_code == 404:
-        return f"Batch folder {batch_folder} not found"
-
     resp.raise_for_status()
     files = resp.json().get("files", [])
 
-    if not files:
-        return f"No files found in {batch_folder}"
+    # Find all files in this batch
+    batch_files = [f for f in files if f["path"].startswith(f"{path}/{batch_name}")]
+    if not batch_files:
+        return f"No files found for batch {batch_name}"
 
     deleted, failed = 0, 0
-    failed_list = []
-
-    for f in files:
+    for f in batch_files:
         file_url = f"{INSTANCE}/api/2.0/fs/files{f['path']}"
         del_resp = requests.delete(file_url, headers=headers)
         if del_resp.ok:
             deleted += 1
         else:
             failed += 1
-            failed_list.append(f["path"])
 
-    # Finally try to delete the empty folder (ignore errors if still has files)
-    folder_url = f"{INSTANCE}/api/2.0/fs/files{batch_folder}"
-    try:
-        requests.delete(folder_url, headers=headers)
-    except:
-        pass
-
-    msg = f"Deleted {deleted} files"
-    if failed > 0:
-        msg += f", {failed} failed: {', '.join(failed_list)}"
-    msg += f" in {batch_folder}"
-
+    msg = f"Deleted {deleted} file(s)"
+    if failed:
+        msg += f", {failed} failed"
+    msg += f" for batch {batch_name}"
     return msg
 
 # ==== TABS ====
@@ -247,8 +231,9 @@ with tab1:
         else:
             st.stop()
     batch_name_input = st.text_input(T["batch_name"], placeholder="e.g. Sept14_Invoices")
+    timestamp = datetime.datetime.now(datetime.UTC).strftime("%H%M%S")  # adds hour-minute-second
     if batch_name_input and batch_name_input.strip():
-        BATCH_NAME = batch_name_input.strip().replace(" ", "_")
+        BATCH_NAME = batch_name_input.strip().replace(" ", "_") + "_" + timestamp
     else:
         BATCH_NAME = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
 
@@ -312,7 +297,7 @@ with tab1:
 
                     if not df_details.empty:
                         st.subheader(T["failed"])
-                        st.dataframe(df_details, use_container_width=True)
+                        st.dataframe(df_details, width="stretch")
                     else:
                         st.success(T["all_passed"])
 
@@ -426,7 +411,7 @@ with tab3:
                     WHERE batch_name = '{selected_batch}'
                     ORDER BY path, id
                 """)
-            st.dataframe(df_archive_checks, use_container_width=True)
+            st.dataframe(df_archive_checks, width="stretch")
             st.download_button(
                 T["download_fail_csv"],
                 data=df_archive_checks.to_csv(index=False).encode("utf-8"),
