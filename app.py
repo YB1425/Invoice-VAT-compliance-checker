@@ -186,23 +186,20 @@ def df_to_excel(df_dict):
     return output.getvalue()
 
 def cleanup_volume(path, batch_name):
-    # List files in the path (no ?recursive=true here)
-    list_url = f"{INSTANCE}/api/2.0/fs/files{path}"
+    batch_folder = f"{path}/{batch_name}"
+    list_url = f"{INSTANCE}/api/2.0/fs/files{batch_folder}?recursive=true"
     resp = requests.get(list_url, headers=headers)
+
     if resp.status_code == 404:
-        return f"Batch folder {batch_name} not found"
+        return f"Batch folder {batch_folder} not found"
     resp.raise_for_status()
 
     files = resp.json().get("files", [])
-
-    # Filter only files belonging to this batch
-    batch_files = [f for f in files if f["path"].startswith(f"{path}/{batch_name}")]
-
-    if not batch_files:
-        return f"No files found for batch {batch_name}"
+    if not files:
+        return f"No files in batch folder {batch_folder}"
 
     deleted, failed = 0, 0
-    for f in batch_files:
+    for f in files:
         file_url = f"{INSTANCE}/api/2.0/fs/files{f['path']}"
         del_resp = requests.delete(file_url, headers=headers)
         if del_resp.ok:
@@ -210,7 +207,10 @@ def cleanup_volume(path, batch_name):
         else:
             failed += 1
 
-    return f"Deleted {deleted} files, {failed} failed for batch {batch_name}"
+    # Try deleting the folder itself
+    requests.delete(f"{INSTANCE}/api/2.0/fs/files{batch_folder}", headers=headers)
+
+    return f"Deleted {deleted} files ({failed} failed) in {batch_folder}"
 # ==== TABS ====
 tab1, tab2, tab3 = st.tabs([T["main_tab"], T["inv_tab"], T["fail_tab"]])
 
