@@ -186,12 +186,43 @@ def df_to_excel(df_dict):
     return output.getvalue()
 
 def cleanup_volume(path, batch_name):
-    # Delete the whole batch folder in one request
-    folder_path = f"{path}/{batch_name}"
-    url = f"{INSTANCE}/api/2.0/fs/files{folder_path}?recursive=true"
-    resp = requests.delete(url, headers=headers)
+    list_url = f"{INSTANCE}/api/2.0/fs/files{path}?recursive=true"
+    resp = requests.get(list_url, headers=headers)
     resp.raise_for_status()
-    return f"Deleted folder {folder_path}"
+    files = resp.json().get("files", [])
+
+    # Filter only files belonging to this batch
+    batch_files = [f for f in files if f["path"].startswith(f"{path}/{batch_name}")]
+
+    if not batch_files:
+        return f"No files found for batch {batch_name}"
+
+    deleted, failed = 0, 0
+    failed_list = []
+
+    for f in batch_files:
+        file_url = f"{INSTANCE}/api/2.0/fs/files{f['path']}"
+        del_resp = requests.delete(file_url, headers=headers)
+        if del_resp.ok:
+            deleted += 1
+        else:
+            failed += 1
+            failed_list.append(f["path"])
+
+    # Try deleting the now-empty batch folder (ignore errors)
+    folder_url = f"{INSTANCE}/api/2.0/fs/files{path}/{batch_name}"
+    try:
+        requests.delete(folder_url, headers=headers)
+    except:
+        pass
+
+    msg = f"Deleted {deleted} files"
+    if failed > 0:
+        msg += f", {failed} failed: {', '.join(failed_list)}"
+    msg += f" for batch {batch_name}"
+
+    return msg
+
 # ==== TABS ====
 tab1, tab2, tab3 = st.tabs([T["main_tab"], T["inv_tab"], T["fail_tab"]])
 
@@ -258,22 +289,30 @@ with tab1:
                     """)
                     st.subheader(T["summary"])
                     st.dataframe(df_summary)
-
                     # --- Failed checks ---
                     df_details = run_sql("""
-                        SELECT h.path, h.invoice_number, h.issue_date, h.final_decision,
-                               c.id AS failed_rule_id, c.name AS failed_rule_name, c.reason AS failed_reason
+                        SELECT h.path,
+                               h.invoice_number,
+                               h.issue_date,
+                               h.final_decision,
+                               c.id AS failed_rule_id,
+                               c.name AS failed_rule_name,
+                               c.reason,
+                               c.evidence
                         FROM dev_uc_catalog.default.zatca_invoices_head h
                         JOIN dev_uc_catalog.default.zatca_checks_flat c
                           ON h.path = c.path
                         WHERE c.result = 'fail'
                         ORDER BY h.path, c.id
                     """)
+
                     if not df_details.empty:
                         st.subheader(T["failed"])
-                        st.dataframe(df_details)
+                        st.dataframe(df_details, use_container_width=True)
                     else:
                         st.success(T["all_passed"])
+
+                    
 
                     # --- Export buttons ---
                     st.subheader(T["export"])
@@ -383,7 +422,7 @@ with tab3:
                     WHERE batch_name = '{selected_batch}'
                     ORDER BY path, id
                 """)
-            st.dataframe(df_archive_checks)
+            st.dataframe(df_archive_checks, use_container_width=True)
             st.download_button(
                 T["download_fail_csv"],
                 data=df_archive_checks.to_csv(index=False).encode("utf-8"),
