@@ -164,9 +164,16 @@ def upload_to_volume(file_name, file_bytes, dest_path):
     resp = requests.put(url, headers=headers, data=file_bytes)
     resp.raise_for_status()
 
-def run_parse_job():
+def run_parse_job(batch_name: str):
     url = f"{INSTANCE}/api/2.1/jobs/run-now"
-    resp = requests.post(url, headers=headers, json={"job_id": JOB_ID})
+    resp = requests.post(
+        url,
+        headers=headers,
+        json={
+            "job_id": JOB_ID,
+            "notebook_params": {"batch_name": batch_name}
+        }
+    )
     resp.raise_for_status()
     return resp.json()["run_id"]
 
@@ -269,10 +276,12 @@ with tab1:
 
                     # Run job
                     with st.spinner("Running Databricks job..."):
-                        run_id = run_parse_job()
+                        run_id = run_parse_job(BATCH_NAME)
+                        st.write(f"📦 Sent batch_name to Databricks: {BATCH_NAME}")
                         wait_for_result(run_id)
 
                     st.success("✅ Job completed! Fetching results...")
+                    
 
                     # --- Summary ---
                     df_summary = run_sql("""
@@ -328,9 +337,12 @@ with tab1:
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoices_head")
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_checks_flat")
                     run_sql("TRUNCATE TABLE dev_uc_catalog.default.zatca_invoice_check_parsed")
+                    
+                    # Temporarily disabled cleanup
+                    # msg = cleanup_volume(VOLUME_PATH, BATCH_NAME)
+                    # st.success(f"Session archived and reset ✅ ({msg})")
+                    st.success("Session archived ✅ (cleanup disabled for now)")
 
-                    msg = cleanup_volume(VOLUME_PATH, BATCH_NAME)
-                    st.success(f"Session archived and reset ✅ ({msg})")
 
 # ==== Archived Invoices (Finance only) ====
 with tab2:
