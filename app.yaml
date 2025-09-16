@@ -1,5 +1,5 @@
 name: vat-invoice-check
-python_file: app.py
+command: streamlit run app.py --server.port 8501 --server.headless true
 
 env:
   - name: DATABRICKS_INSTANCE
