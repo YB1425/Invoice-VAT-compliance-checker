@@ -1,5 +1,5 @@
 name: vat-invoice-check
-command: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0"
+python_file: app.py
 
 env:
   - name: DATABRICKS_INSTANCE
