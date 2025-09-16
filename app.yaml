@@ -25,3 +25,5 @@ resources:
   volumes:
     - full_name: "dev_uc_catalog.default.zatca_invoice_check"
     - full_name: "dev_uc_catalog.default.zatca_invoice_check_archive"
+  jobs:
+    - id: "74322109913991"
