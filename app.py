@@ -114,8 +114,8 @@ with st.sidebar:
 
 T = STRINGS[st.session_state.language]
 # ==== LOGO ====
- LOGO_LIGHT = "assets/logo_light.png"
- LOGO_DARK = "assets/logo_dark.png"
+LOGO_LIGHT = "assets/logo_light.png"
+LOGO_DARK = "assets/logo_dark.png"
 
 # Streamlit automatically picks correct one for light/dark theme
  st.logo(
