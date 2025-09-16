@@ -1,0 +1,21 @@
+name: vat-invoice-check
+command: >
+  pip install -r requirements.txt &&
+  streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+env:
+  - name: DATABRICKS_INSTANCE
+    value: "https://adb-3149763786926783.3.azuredatabricks.net"
+  - name: DATABRICKS_TOKEN
+    value: "dapi43e078850b4849182ec31b98dd0bcde9"
+  - name: JOB_ID
+    value: "74322109913991"
+  - name: WAREHOUSE_ID
+    value: "471689e9733cf085"
+  - name: VOLUME_PATH
+    value: "/Volumes/dev_uc_catalog/default/zatca_invoice_check"
+  - name: ARCHIVE_PATH
+    value: "/Volumes/dev_uc_catalog/default/zatca_invoice_check_archive"
+  - name: MAIN_PASSWORD
+    value: "Password"
+  - name: FINANCE_PASSWORD
+    value: "Finance"
