@@ -171,10 +171,16 @@ def run_parse_job(batch_name: str):
         headers=headers,
         json={
             "job_id": JOB_ID,
-            "sql_params": {"batch_name": batch_name}
+            "notebook_params": {"batch_name": batch_name}
         }
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        st.write("Error status code:", resp.status_code)
+        try:
+            st.write("Error body:", resp.json())
+        except:
+            st.write("Error body not JSON:", resp.text)
+        resp.raise_for_status()
     return resp.json()["run_id"]
 
 def wait_for_result(run_id):
