@@ -4,7 +4,7 @@ import requests
 import time
 import datetime
 from io import BytesIO
-
+import os
 # ==== CONFIG ====
 st.set_page_config(page_title="Invoice Compliance Checker", layout="centered")
 
@@ -12,17 +12,18 @@ MAX_MB = 75
 MAX_BYTES = MAX_MB * 1024 * 1024
 MAX_FILES = 8
 
-INSTANCE = st.secrets["DATABRICKS_INSTANCE"]
-TOKEN = st.secrets["DATABRICKS_TOKEN"]
-VOLUME_PATH = st.secrets["VOLUME_PATH"]
-ARCHIVE_PATH = st.secrets["ARCHIVE_PATH"]
-JOB_ID = st.secrets["JOB_ID"]
-WAREHOUSE_ID = st.secrets["WAREHOUSE_ID"]
 
-MAIN_PASSWORD = st.secrets["MAIN_PASSWORD"]
-FINANCE_PASSWORD = st.secrets["FINANCE_PASSWORD"]
 
-headers = {"Authorization": f"Bearer {TOKEN}"}
+DATABRICKS_INSTANCE = os.getenv("DATABRICKS_INSTANCE")
+DATABRICKS_TOKEN = os.getenv("DATABRICKS_TOKEN")
+JOB_ID = os.getenv("JOB_ID")
+WAREHOUSE_ID = os.getenv("WAREHOUSE_ID")
+VOLUME_PATH = os.getenv("VOLUME_PATH")
+ARCHIVE_PATH = os.getenv("ARCHIVE_PATH")
+MAIN_PASSWORD = os.getenv("MAIN_PASSWORD")
+FINANCE_PASSWORD = os.getenv("FINANCE_PASSWORD")
+
+headers = {"Authorization": f"Bearer {DATABRICKS_TOKEN}"}
 
 # ==== SESSION STATE ====
 if "role" not in st.session_state:
@@ -132,7 +133,7 @@ st.title(T["title"])
 # ==== HELPERS ====
 @st.cache_data(ttl=60)
 def run_sql(sql: str):
-    submit_url = f"{INSTANCE}/api/2.0/sql/statements/"
+    submit_url = f"{DATABRICKS_INSTANCE}/api/2.0/sql/statements/"
     payload = {"statement": sql, "warehouse_id": WAREHOUSE_ID, "wait_timeout": "30s"}
     resp = requests.post(submit_url, headers=headers, json=payload).json()
     if "statement_id" not in resp:
@@ -160,12 +161,12 @@ def run_sql(sql: str):
     return pd.DataFrame(rows, columns=cols)
 
 def upload_to_volume(file_name, file_bytes, dest_path):
-    url = f"{INSTANCE}/api/2.0/fs/files{dest_path}/{file_name}"
+    url = f"{DATABRICKS_INSTANCE}/api/2.0/fs/files{dest_path}/{file_name}"
     resp = requests.put(url, headers=headers, data=file_bytes)
     resp.raise_for_status()
 
 def run_parse_job(batch_name: str):
-    url = f"{INSTANCE}/api/2.1/jobs/run-now"
+    url = f"{DATABRICKS_INSTANCE}/api/2.1/jobs/run-now"
     resp = requests.post(
         url,
         headers=headers,
@@ -184,7 +185,7 @@ def run_parse_job(batch_name: str):
     return resp.json()["run_id"]
 
 def wait_for_result(run_id):
-    url = f"{INSTANCE}/api/2.1/jobs/runs/get?run_id={run_id}"
+    url = f"{DATABRICKS_INSTANCE}/api/2.1/jobs/runs/get?run_id={run_id}"
     while True:
         resp = requests.get(url, headers=headers).json()
         if resp["state"]["life_cycle_state"] == "TERMINATED":
@@ -201,7 +202,7 @@ def df_to_excel(df_dict):
 #redundant for now needs better implementation
 def cleanup_volume_reduntant(path, batch_name):
     batch_folder = f"{path}/{batch_name}"
-    list_url = f"{INSTANCE}/api/2.0/fs/files{batch_folder}"
+    list_url = f"{DATABRICKS_INSTANCE}/api/2.0/fs/files{batch_folder}"
     resp = requests.get(list_url, headers=headers)
 
     if resp.status_code == 404:
@@ -214,7 +215,7 @@ def cleanup_volume_reduntant(path, batch_name):
 
     deleted, failed = 0, 0
     for f in files:
-        file_url = f"{INSTANCE}/api/2.0/fs/files{f['path']}"
+        file_url = f"{DATABRICKS_INSTANCE}/api/2.0/fs/files{f['path']}"
         del_resp = requests.delete(file_url, headers=headers)
         if del_resp.ok:
             deleted += 1
@@ -222,7 +223,7 @@ def cleanup_volume_reduntant(path, batch_name):
             failed += 1
 
     # Finally try to delete the folder itself
-    requests.delete(f"{INSTANCE}/api/2.0/fs/files{batch_folder}", headers=headers)
+    requests.delete(f"{DATABRICKS_INSTANCE}/api/2.0/fs/files{batch_folder}", headers=headers)
 
     msg = f"Deleted {deleted} files"
     if failed > 0:
