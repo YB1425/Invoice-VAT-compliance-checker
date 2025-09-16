@@ -114,18 +114,18 @@ with st.sidebar:
 
 T = STRINGS[st.session_state.language]
 # ==== LOGO ====
-#LOGO_LIGHT = "assets/logo_light.png"
-#LOGO_DARK = "assets/logo_dark.png"
+ LOGO_LIGHT = "assets/logo_light.png"
+ LOGO_DARK = "assets/logo_dark.png"
 
 # Streamlit automatically picks correct one for light/dark theme
-#st.logo(
-#    image=LOGO_LIGHT,     # shown in light mode
-#    icon_image=LOGO_DARK, # shown in dark mode
-#    link="https://autohub.com"  # optional
-#)
+ st.logo(
+     image=LOGO_LIGHT,     # shown in light mode
+     icon_image=LOGO_DARK, # shown in dark mode
+     link="https://autohub.com"  # optional
+)
 
 # Add a little spacing after the logo
-#st.markdown("<br>", unsafe_allow_html=True)
+ st.markdown("<br>", unsafe_allow_html=True)
 
 st.title(T["title"])
 
@@ -349,7 +349,8 @@ with tab1:
                     # Temporarily disabled cleanup
                     # msg = cleanup_volume(VOLUME_PATH, BATCH_NAME)
                     # st.success(f"Session archived and reset ✅ ({msg})")
-                    st.success("Session archived ✅ (cleanup disabled for now)")
+                    # Session complete message
+                    st.success("Session Complete ✅ ")
 
 
 # ==== Archived Invoices (Finance only) ====
