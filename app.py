@@ -319,7 +319,7 @@ with tab1:
 
                     if not df_details.empty:
                         st.subheader(T["failed"])
-                        st.dataframe(df_details, width="stretch")
+                        st.dataframe(df_details, use_container_width=True)
                     else:
                         st.success(T["all_passed"])
 
@@ -437,7 +437,7 @@ with tab3:
                     WHERE batch_name = '{selected_batch}'
                     ORDER BY path, id
                 """)
-            st.dataframe(df_archive_checks, width="stretch")
+            st.dataframe(df_archive_checks, use_container_width=True)
             st.download_button(
                 T["download_fail_csv"],
                 data=df_archive_checks.to_csv(index=False).encode("utf-8"),
