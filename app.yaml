@@ -1,9 +1,7 @@
-env:
-
 name: vat-invoice-check
 command: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0"
 
-
+env:
   - name: DATABRICKS_INSTANCE
     value: "https://adb-3149763786926783.3.azuredatabricks.net"
   - name: DATABRICKS_TOKEN
