@@ -171,7 +171,7 @@ def run_parse_job(batch_name: str):
         headers=headers,
         json={
             "job_id": JOB_ID,
-            "notebook_params": {"batch_name": batch_name}
+            "sql_params": {"batch_name": batch_name}
         }
     )
     resp.raise_for_status()
