@@ -1,6 +1,6 @@
 name: vat-invoice-check
-command: >
-  pip install -r requirements.txt &&
+command: |
+  pip install -r requirements.txt && \
   streamlit run app.py --server.port $PORT --server.address 0.0.0.0
 env:
   - name: DATABRICKS_INSTANCE
