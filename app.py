@@ -14,14 +14,16 @@ MAX_FILES = 8
 
 
 
-DATABRICKS_INSTANCE = os.getenv("DATABRICKS_INSTANCE")
-DATABRICKS_TOKEN = os.getenv("DATABRICKS_TOKEN")
-JOB_ID = os.getenv("JOB_ID")
-WAREHOUSE_ID = os.getenv("WAREHOUSE_ID")
-VOLUME_PATH = os.getenv("VOLUME_PATH")
-ARCHIVE_PATH = os.getenv("ARCHIVE_PATH")
-MAIN_PASSWORD = os.getenv("MAIN_PASSWORD")
-FINANCE_PASSWORD = os.getenv("FINANCE_PASSWORD")
+DATABRICKS_INSTANCE = st.secrets["databricks"]["instance"]
+DATABRICKS_TOKEN    = st.secrets["databricks"]["token"]
+JOB_ID              = st.secrets["databricks"]["job_id"]
+WAREHOUSE_ID        = st.secrets["databricks"]["warehouse_id"]
+VOLUME_PATH         = st.secrets["databricks"]["volume_path"]
+ARCHIVE_PATH        = st.secrets["databricks"]["archive_path"]
+
+# --- App passwords ---
+MAIN_PASSWORD    = st.secrets["auth"]["main_password"]
+FINANCE_PASSWORD = st.secrets["auth"]["finance_password"]
 
 headers = {"Authorization": f"Bearer {DATABRICKS_TOKEN}"}
 
